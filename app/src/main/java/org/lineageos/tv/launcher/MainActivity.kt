@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.transition.Slide
 import android.transition.TransitionManager
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -37,6 +38,7 @@ import org.lineageos.tv.launcher.adapter.FavoritesAdapter
 import org.lineageos.tv.launcher.adapter.MainVerticalAdapter
 import org.lineageos.tv.launcher.adapter.PreviewProgramsAdapter
 import org.lineageos.tv.launcher.adapter.WatchNextAdapter
+import org.lineageos.tv.launcher.ext.panelShortcutEnabled
 import org.lineageos.tv.launcher.ext.favoriteApps
 import org.lineageos.tv.launcher.ext.homeRoleRequestDialogDismissed
 import org.lineageos.tv.launcher.ext.roleCanBeRequested
@@ -213,6 +215,23 @@ class MainActivity : AppCompatActivity(R.layout.activity_main) {
                 }
             }
         }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // A dedicated remote button, or the keyboard's application key, opens
+        // the system options panel. The panel stays reachable from the
+        // notification indicator when the shortcut is turned off.
+        if (sharedPreferences.panelShortcutEnabled) {
+            when (keyCode) {
+                KeyEvent.KEYCODE_SETTINGS,
+                KeyEvent.KEYCODE_MENU -> {
+                    startActivity(Intent(this, SystemOptionsActivity::class.java))
+                    return true
+                }
+            }
+        }
+
+        return super.onKeyDown(keyCode, event)
     }
 
     override fun onStart() {

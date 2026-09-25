@@ -28,6 +28,7 @@
     <string name="network_status">Network\n%1$s</string>
     <string name="bluetooth_status">Accessories\n%1$s</string>
     <string name="not_connected">Not connected</string>
+    <string name="panel_shortcut_status">Panel shortcut\n%1$s</string>
     <string name="enabled">Enabled</string>
     <string name="disabled">Disabled</string>
 

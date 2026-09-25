@@ -114,6 +114,15 @@
 
             </LinearLayout>
 
+            <org.lineageos.tv.launcher.view.TwoLineButton
+                android:id="@+id/panelShortcutTwoLineButton"
+                style="@style/TwoLineSystemOptionsButtonStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/panel_shortcut_status"
+                app:icon="@drawable/ic_keyboard" />
+
         </LinearLayout>
 
         <androidx.constraintlayout.widget.ConstraintLayout

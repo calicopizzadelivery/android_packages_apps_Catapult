@@ -77,3 +77,17 @@ var SharedPreferences.homeRoleRequestDialogDismissed: Boolean
     set(value) = edit {
         putBoolean(HOME_ROLE_REQUEST_DIALOG_DISMISSED, value)
     }
+
+const val PANEL_SHORTCUT_ENABLED_KEY = "panel_shortcut_enabled"
+
+/**
+ * Whether a remote or keyboard button opens the system options panel.
+ *
+ * The panel is always reachable from the notification indicator, so turning
+ * this off removes the shortcut rather than the panel itself.
+ */
+var SharedPreferences.panelShortcutEnabled: Boolean
+    get() = getBoolean(PANEL_SHORTCUT_ENABLED_KEY, true)
+    set(value) = edit {
+        putBoolean(PANEL_SHORTCUT_ENABLED_KEY, value)
+    }

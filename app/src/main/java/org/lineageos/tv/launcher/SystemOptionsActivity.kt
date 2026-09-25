@@ -37,7 +37,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
+import androidx.preference.PreferenceManager
 import org.lineageos.tv.launcher.ext.NetworkState
+import org.lineageos.tv.launcher.ext.panelShortcutEnabled
 import org.lineageos.tv.launcher.ext.networkCallbackFlow
 import org.lineageos.tv.launcher.notification.NotificationAdapter
 import org.lineageos.tv.launcher.notification.NotificationUtils
@@ -61,6 +63,7 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
     private val noNotificationAccessLinearLayout by lazy { findViewById<LinearLayout>(R.id.noNotificationAccessLinearLayout)!! }
     private val noNotificationsTextView by lazy { findViewById<TextView>(R.id.noNotificationsTextView)!! }
     private val notificationsVerticalGridView by lazy { findViewById<VerticalGridView>(R.id.notificationsVerticalGridView)!! }
+    private val panelShortcutTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.panelShortcutTwoLineButton)!! }
     private val powerMaterialButton by lazy { findViewById<MaterialButton>(R.id.powerMaterialButton)!! }
     private val settingsButton by lazy { findViewById<MaterialButton>(R.id.settingsMaterialButton)!! }
     private val sleepMaterialButton by lazy { findViewById<MaterialButton>(R.id.sleepMaterialButton)!! }
@@ -68,6 +71,8 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
     private val notificationAdapter: NotificationAdapter by lazy { NotificationAdapter(this, this) }
 
     private val connectivityManager by lazy { getSystemService(ConnectivityManager::class.java)!! }
+
+    private val sharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(this)!! }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,6 +99,7 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         // Wifi & Bluetooth
         setNetworkButton()
         setBluetoothButton()
+        setPanelShortcutButton()
 
         settingsButton.setOnClickListener {
             startActivity(SETTINGS)
@@ -266,6 +272,22 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         val networkSpan =
             SpannableString(resources.getString(R.string.network_status, networkString))
         networkTwoLineButton.setSpan(networkSpan)
+    }
+
+    private fun setPanelShortcutButton() {
+        val enabled = sharedPreferences.panelShortcutEnabled
+        val statusSpan = SpannableString(
+            resources.getString(
+                R.string.panel_shortcut_status,
+                resources.getString(if (enabled) R.string.enabled else R.string.disabled)
+            )
+        )
+        panelShortcutTwoLineButton.setSpan(statusSpan)
+
+        panelShortcutTwoLineButton.setOnClickListener {
+            sharedPreferences.panelShortcutEnabled = !sharedPreferences.panelShortcutEnabled
+            setPanelShortcutButton()
+        }
     }
 
     private fun setBluetoothButton() {
