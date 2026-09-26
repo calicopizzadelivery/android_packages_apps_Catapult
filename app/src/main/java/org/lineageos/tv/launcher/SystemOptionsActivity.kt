@@ -8,6 +8,8 @@ package org.lineageos.tv.launcher
 import android.app.ActivityOptions
 import android.app.PendingIntent
 import android.bluetooth.BluetoothManager
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.content.Intent
 import android.icu.text.DateFormat
 import android.net.ConnectivityManager
@@ -56,7 +58,9 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
     private val notificationViewModel: NotificationViewModel by viewModels()
 
     // Views
+    private val accessibilityTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.accessibilityTwoLineButton)!! }
     private val allowNotificationAccessMaterialButton by lazy { findViewById<MaterialButton>(R.id.allowNotificationAccessMaterialButton)!! }
+    private val audioOutputTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.audioOutputTwoLineButton)!! }
     private val bluetoothTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.bluetoothTwoLineButton)!! }
     private val dateTextView by lazy { findViewById<TextView>(R.id.dateTextView)!! }
     private val networkTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.networkTwoLineButton)!! }
@@ -65,6 +69,7 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
     private val notificationsVerticalGridView by lazy { findViewById<VerticalGridView>(R.id.notificationsVerticalGridView)!! }
     private val panelShortcutTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.panelShortcutTwoLineButton)!! }
     private val powerMaterialButton by lazy { findViewById<MaterialButton>(R.id.powerMaterialButton)!! }
+    private val screensaverTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.screensaverTwoLineButton)!! }
     private val settingsButton by lazy { findViewById<MaterialButton>(R.id.settingsMaterialButton)!! }
     private val sleepMaterialButton by lazy { findViewById<MaterialButton>(R.id.sleepMaterialButton)!! }
 
@@ -100,6 +105,9 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         setNetworkButton()
         setBluetoothButton()
         setPanelShortcutButton()
+        setAccessibilityButton()
+        setScreensaverButton()
+        setAudioOutputButton()
 
         settingsButton.setOnClickListener {
             startActivity(SETTINGS)
@@ -274,6 +282,91 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         networkTwoLineButton.setSpan(networkSpan)
     }
 
+    private fun setAudioOutputButton() {
+        // Which output is actually live, not just which are attached. Ordered by
+        // what overrides what: a connected A2DP sink or headphones take audio
+        // away from HDMI, and HDMI takes it from the built-in speaker.
+        val audioManager = getSystemService(AudioManager::class.java)
+        val types = audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            ?.map { it.type }
+            ?.toSet()
+            ?: emptySet()
+
+        val status = resources.getString(
+            when {
+                types.contains(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) ->
+                    R.string.audio_output_bluetooth
+
+                types.contains(AudioDeviceInfo.TYPE_WIRED_HEADPHONES) ||
+                        types.contains(AudioDeviceInfo.TYPE_WIRED_HEADSET) ->
+                    R.string.audio_output_headphones
+
+                types.contains(AudioDeviceInfo.TYPE_HDMI) ||
+                        types.contains(AudioDeviceInfo.TYPE_HDMI_ARC) ||
+                        types.contains(AudioDeviceInfo.TYPE_HDMI_EARC) ->
+                    R.string.audio_output_hdmi
+
+                types.contains(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) ->
+                    R.string.audio_output_speaker
+
+                else -> R.string.audio_output_unknown
+            }
+        )
+
+        audioOutputTwoLineButton.setSpan(
+            SpannableString(resources.getString(R.string.audio_output_status, status))
+        )
+
+        audioOutputTwoLineButton.setOnClickListener {
+            startActivity(SOUND_SETTINGS)
+        }
+    }
+
+    private fun setScreensaverButton() {
+        // screensaver_components is unset out of the box, which is worth
+        // surfacing: the screensaver looks enabled but has nothing to show.
+        val component = Settings.Secure.getString(
+            contentResolver, SCREENSAVER_COMPONENTS
+        )
+        val status = resources.getString(
+            if (component.isNullOrEmpty()) R.string.screensaver_not_set
+            else R.string.screensaver_on
+        )
+
+        screensaverTwoLineButton.setSpan(
+            SpannableString(resources.getString(R.string.screensaver_status, status))
+        )
+
+        screensaverTwoLineButton.setOnClickListener {
+            startActivity(SCREENSAVER_SETTINGS)
+        }
+    }
+
+    private fun setAccessibilityButton() {
+        // Show whether anything is actually assisting, not just that the screen
+        // exists: "Accessibility / No services on" is the common case on a TV
+        // box and is worth being able to see at a glance.
+        val enabledServices = Settings.Secure.getString(
+            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        )
+        val status = when {
+            enabledServices.isNullOrEmpty() -> resources.getString(R.string.accessibility_none)
+            else -> resources.getQuantityString(
+                R.plurals.accessibility_services_on,
+                enabledServices.split(":").size,
+                enabledServices.split(":").size
+            )
+        }
+
+        accessibilityTwoLineButton.setSpan(
+            SpannableString(resources.getString(R.string.accessibility_status, status))
+        )
+
+        accessibilityTwoLineButton.setOnClickListener {
+            startActivity(ACCESSIBILITY_SETTINGS)
+        }
+    }
+
     private fun setPanelShortcutButton() {
         val enabled = sharedPreferences.panelShortcutEnabled
         val statusSpan = SpannableString(
@@ -392,6 +485,21 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
             )
         }
         val NOTIFICATION_SETTINGS: Intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+        val ACCESSIBILITY_SETTINGS: Intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+
+        /** Not a public constant, and ACTION_DREAM_SETTINGS resolves to nothing on TV. */
+        const val SCREENSAVER_COMPONENTS = "screensaver_components"
+
+        /** DisplaySoundActivity advertises this action, so no explicit name needed. */
+        val SOUND_SETTINGS: Intent = Intent("com.android.settings.SOUND_SETTINGS")
+
+        /** Exported, but with no intent filter, so it needs the explicit name. */
+        val SCREENSAVER_SETTINGS: Intent = Intent().apply {
+            setClassName(
+                "com.android.tv.settings",
+                "com.android.tv.settings.device.display.daydream.DaydreamActivity"
+            )
+        }
 
         val wifiIcons = intArrayOf(
             R.drawable.ic_wifi_signal_0,

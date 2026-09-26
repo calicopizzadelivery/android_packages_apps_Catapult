@@ -28,6 +28,21 @@
     <string name="network_status">Network\n%1$s</string>
     <string name="bluetooth_status">Accessories\n%1$s</string>
     <string name="not_connected">Not connected</string>
+    <string name="audio_output_status">Audio output\n%1$s</string>
+    <string name="audio_output_hdmi">HDMI</string>
+    <string name="audio_output_bluetooth">Bluetooth</string>
+    <string name="audio_output_speaker">Speaker</string>
+    <string name="audio_output_headphones">Headphones</string>
+    <string name="audio_output_unknown">Unknown</string>
+    <string name="screensaver_status">Screensaver\n%1$s</string>
+    <string name="screensaver_not_set">Not set</string>
+    <string name="screensaver_on">Ready</string>
+    <plurals name="accessibility_services_on">
+        <item quantity="one">%1$d service on</item>
+        <item quantity="other">%1$d services on</item>
+    </plurals>
+    <string name="accessibility_status">Accessibility\n%1$s</string>
+    <string name="accessibility_none">No services on</string>
     <string name="panel_shortcut_status">Panel shortcut\n%1$s</string>
     <string name="enabled">Enabled</string>
     <string name="disabled">Disabled</string>

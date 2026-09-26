@@ -114,14 +114,59 @@
 
             </LinearLayout>
 
-            <org.lineageos.tv.launcher.view.TwoLineButton
-                android:id="@+id/panelShortcutTwoLineButton"
-                style="@style/TwoLineSystemOptionsButtonStyle"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:text="@string/panel_shortcut_status"
-                app:icon="@drawable/ic_keyboard" />
+                android:orientation="horizontal">
+
+                <org.lineageos.tv.launcher.view.TwoLineButton
+                    android:id="@+id/screensaverTwoLineButton"
+                    style="@style/TwoLineSystemOptionsButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="@string/screensaver_status"
+                    app:icon="@drawable/ic_screensaver" />
+
+                <org.lineageos.tv.launcher.view.TwoLineButton
+                    android:id="@+id/accessibilityTwoLineButton"
+                    style="@style/TwoLineSystemOptionsButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/accessibility_status"
+                    app:icon="@drawable/ic_accessibility" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="horizontal">
+
+                <org.lineageos.tv.launcher.view.TwoLineButton
+                    android:id="@+id/audioOutputTwoLineButton"
+                    style="@style/TwoLineSystemOptionsButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:text="@string/audio_output_status"
+                    app:icon="@drawable/ic_audio_output" />
+
+                <org.lineageos.tv.launcher.view.TwoLineButton
+                    android:id="@+id/panelShortcutTwoLineButton"
+                    style="@style/TwoLineSystemOptionsButtonStyle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/panel_shortcut_status"
+                    app:icon="@drawable/ic_keyboard" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
