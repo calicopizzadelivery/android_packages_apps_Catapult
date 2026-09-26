@@ -323,22 +323,42 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
     }
 
     private fun setScreensaverButton() {
-        // screensaver_components is unset out of the box, which is worth
-        // surfacing: the screensaver looks enabled but has nothing to show.
+        // screensaver_components is unset out of the box, so the screensaver
+        // looks enabled while having nothing to show. With nothing selected
+        // there is nothing to start, so send the user to the picker instead.
         val component = Settings.Secure.getString(
             contentResolver, SCREENSAVER_COMPONENTS
         )
-        val status = resources.getString(
-            if (component.isNullOrEmpty()) R.string.screensaver_not_set
-            else R.string.screensaver_on
-        )
+        val configured = !component.isNullOrEmpty()
 
         screensaverTwoLineButton.setSpan(
-            SpannableString(resources.getString(R.string.screensaver_status, status))
+            SpannableString(
+                resources.getString(
+                    R.string.screensaver_status,
+                    resources.getString(
+                        if (configured) R.string.screensaver_start
+                        else R.string.screensaver_not_set
+                    )
+                )
+            )
         )
 
         screensaverTwoLineButton.setOnClickListener {
+            if (configured) {
+                // Blank the box now — the point of the tile is to park a
+                // MythTV front end without waiting out the idle timer.
+                // DaydreamVoiceAction is exported and calls startDreaming()
+                // for us, which keeps this out of needing WRITE_DREAM_STATE.
+                startActivity(SCREENSAVER_START)
+                finish()
+            } else {
+                startActivity(SCREENSAVER_SETTINGS)
+            }
+        }
+
+        screensaverTwoLineButton.setOnLongClickListener {
             startActivity(SCREENSAVER_SETTINGS)
+            true
         }
     }
 
@@ -492,6 +512,13 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
 
         /** DisplaySoundActivity advertises this action, so no explicit name needed. */
         val SOUND_SETTINGS: Intent = Intent("com.android.settings.SOUND_SETTINGS")
+
+        /**
+         * Starts the selected dream. TvSettings' DaydreamVoiceAction is
+         * exported for this action and calls DreamBackend.startDreaming(),
+         * so the launcher does not need WRITE_DREAM_STATE itself.
+         */
+        val SCREENSAVER_START: Intent = Intent("com.google.android.pano.action.SLEEP")
 
         /** Exported, but with no intent filter, so it needs the explicit name. */
         val SCREENSAVER_SETTINGS: Intent = Intent().apply {

@@ -36,7 +36,7 @@
     <string name="audio_output_unknown">Unknown</string>
     <string name="screensaver_status">Screensaver\n%1$s</string>
     <string name="screensaver_not_set">Not set</string>
-    <string name="screensaver_on">Ready</string>
+    <string name="screensaver_start">Start now</string>
     <plurals name="accessibility_services_on">
         <item quantity="one">%1$d service on</item>
         <item quantity="other">%1$d services on</item>
