@@ -34,6 +34,7 @@
     <string name="audio_output_speaker">Speaker</string>
     <string name="audio_output_headphones">Headphones</string>
     <string name="audio_output_unknown">Unknown</string>
+    <string name="audio_output_title">Audio output</string>
     <string name="screensaver_status">Screensaver\n%1$s</string>
     <string name="screensaver_not_set">Not set</string>
     <string name="screensaver_start">Start now</string>

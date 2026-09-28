@@ -5,8 +5,10 @@
 -->
 <permissions>
     <privapp-permissions package="org.lineageos.tv.launcher">
+        <permission name="android.permission.BLUETOOTH_PRIVILEGED" />
         <permission name="android.permission.DEVICE_POWER" />
         <permission name="android.permission.INTERNAL_SYSTEM_WINDOW" />
+        <permission name="android.permission.MODIFY_PHONE_STATE" />
         <permission name="android.permission.WRITE_SECURE_SETTINGS" />
     </privapp-permissions>
 </permissions>

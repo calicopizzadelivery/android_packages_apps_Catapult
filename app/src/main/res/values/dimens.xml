@@ -16,4 +16,6 @@
     <dimen name="main_all_apps_row_height">174dp</dimen>
     <dimen name="modal_margin">8dp</dimen>
     <dimen name="notification_corner_radius">10dp</dimen>
+    <!-- Roughly the width of the panel it opens over. -->
+    <dimen name="audio_output_dialog_width">420dp</dimen>
 </resources>

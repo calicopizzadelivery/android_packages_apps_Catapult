@@ -7,8 +7,15 @@ package org.lineageos.tv.launcher
 
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
+import android.bluetooth.BluetoothStatusCodes
+import android.bluetooth.BluetoothA2dp
 import android.media.AudioDeviceInfo
+import android.media.AudioDeviceCallback
 import android.media.AudioManager
 import android.content.Intent
 import android.icu.text.DateFormat
@@ -26,12 +33,15 @@ import android.provider.Settings
 import android.service.notification.StatusBarNotification
 import android.text.SpannableString
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
 import android.view.WindowManagerGlobal
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.leanback.widget.VerticalGridView
 import androidx.lifecycle.Lifecycle
@@ -79,6 +89,42 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
 
     private val sharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(this)!! }
 
+    /**
+     * The A2DP profile proxy, bound asynchronously. Needed because
+     * AudioManager can only see the Bluetooth sink that is currently routed,
+     * not the ones that are connected and idle — and a picker has to offer
+     * both. Null until the service binds, and the tile repaints when it does.
+     */
+    private var a2dp: BluetoothA2dp? = null
+
+    private val a2dpListener = object : BluetoothProfile.ServiceListener {
+        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+            if (profile == BluetoothProfile.A2DP) {
+                a2dp = proxy as BluetoothA2dp
+                setAudioOutputButton()
+            }
+        }
+
+        override fun onServiceDisconnected(profile: Int) {
+            if (profile == BluetoothProfile.A2DP) {
+                a2dp = null
+            }
+        }
+    }
+
+    /**
+     * Switching output is asynchronous, and a sink can also appear or vanish on
+     * its own. Repaint from the platform rather than assuming the switch we
+     * asked for is the one that happened.
+     */
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) =
+            setAudioOutputButton()
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) =
+            setAudioOutputButton()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -108,6 +154,11 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         setAccessibilityButton()
         setScreensaverButton()
         setAudioOutputButton()
+
+        getSystemService(BluetoothManager::class.java)?.adapter
+            ?.getProfileProxy(this, a2dpListener, BluetoothProfile.A2DP)
+        getSystemService(AudioManager::class.java)
+            ?.registerAudioDeviceCallback(audioDeviceCallback, null)
 
         settingsButton.setOnClickListener {
             startActivity(SETTINGS)
@@ -237,6 +288,14 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         if (NotificationUtils.notificationPermissionGranted(this)) {
             notificationViewModel.unbindService(this)
         }
+
+        getSystemService(AudioManager::class.java)
+            ?.unregisterAudioDeviceCallback(audioDeviceCallback)
+        a2dp?.let {
+            getSystemService(BluetoothManager::class.java)?.adapter
+                ?.closeProfileProxy(BluetoothProfile.A2DP, it)
+            a2dp = null
+        }
     }
 
     private fun setNetworkButton(
@@ -282,21 +341,31 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         networkTwoLineButton.setSpan(networkSpan)
     }
 
-    private fun setAudioOutputButton() {
-        // Which output is actually live, not just which are attached. Ordered by
-        // what overrides what: a connected A2DP sink or headphones take audio
-        // away from HDMI, and HDMI takes it from the built-in speaker.
+    /**
+     * The outputs a user can actually choose between on this box: the built-in
+     * one (HDMI here, the speaker on hardware that has one) and every connected
+     * Bluetooth sink.
+     *
+     * [device] is null for the built-in output, which is how the platform
+     * models it too — routing to HDMI is "no active Bluetooth audio device"
+     * rather than a device of its own.
+     */
+    private data class AudioOutput(val label: String, val device: BluetoothDevice?)
+
+    /**
+     * Live state comes from AudioManager, which is public API. Only the
+     * *switch* needs the privileged calls below, so a build where those are
+     * refused still shows the right thing.
+     */
+    private fun audioOutputs(): List<AudioOutput> {
         val audioManager = getSystemService(AudioManager::class.java)
         val types = audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             ?.map { it.type }
             ?.toSet()
             ?: emptySet()
 
-        val status = resources.getString(
+        val builtIn = resources.getString(
             when {
-                types.contains(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP) ->
-                    R.string.audio_output_bluetooth
-
                 types.contains(AudioDeviceInfo.TYPE_WIRED_HEADPHONES) ||
                         types.contains(AudioDeviceInfo.TYPE_WIRED_HEADSET) ->
                     R.string.audio_output_headphones
@@ -313,13 +382,153 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
             }
         )
 
+        // Bonded rather than connected. getDevices() lists a sink only while
+        // it is the active route; a2dp.connectedDevices adds the idle-but-
+        // connected ones — but deactivating a sink also drops its profile
+        // connection, so a "connected" list empties the moment you switch to
+        // HDMI and you can never switch back. Everything bonded that can play
+        // audio is the set a user means by "my speakers".
+        val sinks = getSystemService(BluetoothManager::class.java)?.adapter
+            ?.bondedDevices.orEmpty()
+            .filter { isAudioSink(it) }
+            .map { AudioOutput(bluetoothLabel(it), it) }
+
+        return listOf(AudioOutput(builtIn, null)) + sinks
+    }
+
+    /**
+     * A2DP support is the thing that matters, but reading the UUID list needs
+     * the device to have been queried. The class of device is always there and
+     * is what the accessory UI uses, so go by that and let a false positive be
+     * a row that simply does not work rather than a speaker that never appears.
+     */
+    private fun isAudioSink(device: BluetoothDevice) = try {
+        device.bluetoothClass?.let {
+            it.hasService(BluetoothClass.Service.AUDIO) ||
+                    it.majorDeviceClass == BluetoothClass.Device.Major.AUDIO_VIDEO
+        } == true
+    } catch (e: SecurityException) {
+        Log.w(LOG_TAG, "no permission to read a bonded device's class", e)
+        false
+    }
+
+    private fun bluetoothLabel(device: BluetoothDevice) = try {
+        device.alias ?: device.name ?: device.address
+    } catch (e: SecurityException) {
+        // BLUETOOTH_CONNECT is default-granted to this package, but do not take
+        // an unnamed device down the whole panel with it.
+        Log.w(LOG_TAG, "no permission to read the name of a bonded device", e)
+        device.address
+    }
+
+    /** The output audio is on now, as an index into [audioOutputs]. */
+    private fun activeOutputIndex(outputs: List<AudioOutput>): Int {
+        val audioManager = getSystemService(AudioManager::class.java)
+        val activeAddress = audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            ?.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP }
+            ?.address
+            ?: return 0
+
+        val matched = outputs.indexOfFirst { it.device?.address == activeAddress }
+        if (matched >= 0) {
+            return matched
+        }
+
+        // Audio is on a Bluetooth sink we did not list — it disconnected
+        // between the two reads, or A2DP has not bound yet. Point at any sink
+        // rather than claim HDMI while sound comes out of a speaker.
+        val anySink = outputs.indexOfFirst { it.device != null }
+        return if (anySink >= 0) anySink else 0
+    }
+
+    private fun setAudioOutputButton() {
+        val outputs = audioOutputs()
+        val active = outputs.getOrNull(activeOutputIndex(outputs))
+
         audioOutputTwoLineButton.setSpan(
-            SpannableString(resources.getString(R.string.audio_output_status, status))
+            SpannableString(
+                resources.getString(
+                    R.string.audio_output_status,
+                    active?.label ?: resources.getString(R.string.audio_output_unknown)
+                )
+            )
         )
 
-        audioOutputTwoLineButton.setOnClickListener {
-            startActivity(SOUND_SETTINGS)
+        audioOutputTwoLineButton.setOnClickListener { showAudioOutputPicker() }
+    }
+
+    private fun showAudioOutputPicker() {
+        val outputs = audioOutputs()
+
+        // One output is not a choice. Send the user somewhere they can pair a
+        // speaker rather than showing them a list of one.
+        if (outputs.size < 2) {
+            startActivity(BLUETOOTH_SETTINGS)
+            return
         }
+
+        val labels = outputs.map { it.label }.toTypedArray()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.audio_output_title)
+            .setSingleChoiceItems(labels, activeOutputIndex(outputs)) { d, which ->
+                d.dismiss()
+                selectAudioOutput(outputs[which])
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+
+        // The panel is a right-edge pop-over, so a dialog centred on the screen
+        // reads as a different surface entirely. Keep it over the panel.
+        dialog.window?.let { window ->
+            window.attributes = window.attributes.apply { gravity = Gravity.END }
+            window.setLayout(
+                resources.getDimensionPixelSize(R.dimen.audio_output_dialog_width),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
+        dialog.show()
+    }
+
+    /**
+     * Switching output *is* activating or deactivating a Bluetooth sink: A2DP
+     * outranks HDMI in the platform's routing policy, so "use HDMI" means "have
+     * no active Bluetooth audio device". This is the same pair of calls
+     * TvSettings uses from AccessoryUtils.
+     *
+     * Both need BLUETOOTH_PRIVILEGED, which this package is allowlisted for.
+     */
+    private fun selectAudioOutput(output: AudioOutput) {
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter
+        if (adapter == null) {
+            Log.w(LOG_TAG, "no Bluetooth adapter; cannot change audio output")
+            return
+        }
+
+        val switched = try {
+            output.device?.let { device ->
+                // A sink that is bonded but not connected cannot be made
+                // active. Connecting it is enough: the stack makes a freshly
+                // connected A2DP device the active one.
+                if (a2dp?.getConnectionState(device) == BluetoothProfile.STATE_CONNECTED) {
+                    adapter.setActiveDevice(device, BluetoothAdapter.ACTIVE_DEVICE_AUDIO)
+                } else {
+                    // BluetoothA2dp.connect is @hide and Bluetooth is a
+                    // mainline module, so it is not in the stubs even for a
+                    // platform app. BluetoothDevice.connect is the @SystemApi
+                    // equivalent, and wants the same three permissions.
+                    device.connect() == BluetoothStatusCodes.SUCCESS
+                }
+            } ?: adapter.removeActiveDevice(BluetoothAdapter.ACTIVE_DEVICE_AUDIO)
+        } catch (e: SecurityException) {
+            Log.e(LOG_TAG, "not allowed to change the active audio device", e)
+            false
+        }
+
+        if (!switched) {
+            Log.w(LOG_TAG, "refused to switch audio output to ${output.label}")
+        }
+        // Routing is asynchronous either way; audioDeviceCallback repaints the
+        // tile when it lands, so there is nothing to update here.
     }
 
     private fun setScreensaverButton() {
@@ -495,6 +704,8 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
     }
 
     companion object {
+        private const val LOG_TAG = "SystemOptions"
+
         val SETTINGS: Intent = Intent(Settings.ACTION_SETTINGS)
         val WIFI_SETTINGS: Intent = Intent(Settings.ACTION_WIFI_SETTINGS)
         val BLUETOOTH_SETTINGS: Intent = Intent().apply {

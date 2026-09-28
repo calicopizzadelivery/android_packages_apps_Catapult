@@ -5,6 +5,7 @@
 -->
 <exceptions>
     <exception package="org.lineageos.tv.launcher">
+        <permission name="android.permission.BLUETOOTH_CONNECT" />
         <permission name="android.permission.READ_TV_LISTINGS" />
     </exception>
 </exceptions>

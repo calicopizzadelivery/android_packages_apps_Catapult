@@ -30,11 +30,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- System permissions -->
     <uses-permission android:name="android.permission.DEVICE_POWER" />
     <uses-permission android:name="android.permission.INTERNAL_SYSTEM_WINDOW" />
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <!-- setActiveDevice/removeActiveDevice, to pick the audio output. The
+         framework requires all three: BLUETOOTH_CONNECT, BLUETOOTH_PRIVILEGED
+         and MODIFY_PHONE_STATE. Missing the last one fails at the binder with
+         a SecurityException, not at build time. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_PRIVILEGED" />
+    <uses-permission android:name="android.permission.MODIFY_PHONE_STATE" />
 
     <queries>
         <intent>
