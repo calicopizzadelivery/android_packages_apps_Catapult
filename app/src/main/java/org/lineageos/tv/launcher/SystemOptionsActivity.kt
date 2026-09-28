@@ -571,28 +571,115 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         }
     }
 
+    /**
+     * An accessibility switch the platform actually has on this build.
+     *
+     * [on] and [off] are the two values rather than a boolean, because bold
+     * text is not 0/1: FONT_WEIGHT_ADJUSTMENT carries the weight delta, and
+     * TvSettings uses 300 for bold.
+     */
+    private data class AccessibilityToggle(
+        val labelRes: Int,
+        val setting: String,
+        val on: Int = 1,
+        val off: Int = 0,
+    )
+
+    /**
+     * Deliberately not a list of accessibility *services*: a stock LineageOS TV
+     * build installs none at all — TalkBack is a Google app — so a service list
+     * is always empty and the old "No services on" summary could never say
+     * anything else. These five are what the Accessibility screen in TvSettings
+     * actually offers as switches, and they all work here.
+     */
+    private val accessibilityToggles = listOf(
+        AccessibilityToggle(
+            R.string.accessibility_bold_text,
+            Settings.Secure.FONT_WEIGHT_ADJUSTMENT,
+            on = BOLD_TEXT_ADJUSTMENT,
+        ),
+        AccessibilityToggle(
+            R.string.accessibility_high_contrast_text,
+            Settings.Secure.ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED,
+        ),
+        AccessibilityToggle(
+            R.string.accessibility_color_correction,
+            Settings.Secure.ACCESSIBILITY_DISPLAY_DALTONIZER_ENABLED,
+        ),
+        AccessibilityToggle(
+            R.string.accessibility_captions,
+            Settings.Secure.ACCESSIBILITY_CAPTIONING_ENABLED,
+        ),
+        AccessibilityToggle(
+            R.string.accessibility_audio_description,
+            Settings.Secure.ENABLED_ACCESSIBILITY_AUDIO_DESCRIPTION_BY_DEFAULT,
+        ),
+    )
+
+    private fun isToggleOn(toggle: AccessibilityToggle) =
+        Settings.Secure.getInt(contentResolver, toggle.setting, toggle.off) == toggle.on
+
     private fun setAccessibilityButton() {
-        // Show whether anything is actually assisting, not just that the screen
-        // exists: "Accessibility / No services on" is the common case on a TV
-        // box and is worth being able to see at a glance.
-        val enabledServices = Settings.Secure.getString(
+        // Count what is actually assisting. An enabled service still counts,
+        // for the case where one has been sideloaded, even though none of the
+        // toggles below is a service.
+        val services = Settings.Secure.getString(
             contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        )
-        val status = when {
-            enabledServices.isNullOrEmpty() -> resources.getString(R.string.accessibility_none)
-            else -> resources.getQuantityString(
-                R.plurals.accessibility_services_on,
-                enabledServices.split(":").size,
-                enabledServices.split(":").size
-            )
+        )?.split(":")?.filter { it.isNotEmpty() }.orEmpty()
+        val count = accessibilityToggles.count { isToggleOn(it) } + services.size
+
+        val status = if (count == 0) {
+            resources.getString(R.string.accessibility_none)
+        } else {
+            resources.getQuantityString(R.plurals.accessibility_features_on, count, count)
         }
 
         accessibilityTwoLineButton.setSpan(
             SpannableString(resources.getString(R.string.accessibility_status, status))
         )
 
-        accessibilityTwoLineButton.setOnClickListener {
-            startActivity(ACCESSIBILITY_SETTINGS)
+        accessibilityTwoLineButton.setOnClickListener { showAccessibilityToggles() }
+    }
+
+    private fun showAccessibilityToggles() {
+        val labels = accessibilityToggles.map { resources.getString(it.labelRes) }.toTypedArray()
+        val checked = accessibilityToggles.map { isToggleOn(it) }.toBooleanArray()
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.accessibility_title)
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                applyAccessibilityToggle(accessibilityToggles[which], isChecked)
+            }
+            // Font scale, text-to-speech and any sideloaded service live on the
+            // full screen; this panel only carries the switches.
+            .setNeutralButton(R.string.accessibility_more) { _, _ ->
+                startActivity(ACCESSIBILITY_SETTINGS)
+            }
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
+
+        dialog.window?.let { window ->
+            window.attributes = window.attributes.apply { gravity = Gravity.END }
+            window.setLayout(
+                resources.getDimensionPixelSize(R.dimen.audio_output_dialog_width),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
+        dialog.setOnDismissListener { setAccessibilityButton() }
+        dialog.show()
+    }
+
+    /**
+     * These are all Settings.Secure writes, which is why this needs
+     * WRITE_SECURE_SETTINGS — already held for the panel's other tiles. They
+     * take effect immediately; nothing has to be restarted.
+     */
+    private fun applyAccessibilityToggle(toggle: AccessibilityToggle, enable: Boolean) {
+        val value = if (enable) toggle.on else toggle.off
+        try {
+            Settings.Secure.putInt(contentResolver, toggle.setting, value)
+        } catch (e: SecurityException) {
+            Log.e(LOG_TAG, "not allowed to write ${toggle.setting}", e)
         }
     }
 
@@ -705,6 +792,9 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
 
     companion object {
         private const val LOG_TAG = "SystemOptions"
+
+        // AccessibilityFragment in TvSettings uses the same value.
+        private const val BOLD_TEXT_ADJUSTMENT = 300
 
         val SETTINGS: Intent = Intent(Settings.ACTION_SETTINGS)
         val WIFI_SETTINGS: Intent = Intent(Settings.ACTION_WIFI_SETTINGS)

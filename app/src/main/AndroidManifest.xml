@@ -83,8 +83,13 @@
             android:name=".ModifyChannelsActivity"
             android:theme="@style/Theme.Catapult.SideActivity" />
 
+        <!-- configChanges: toggling bold text from the accessibility tile raises
+             CONFIG_FONT_WEIGHT_ADJUSTMENT, which would otherwise recreate this
+             activity and take any open dialog with it. The panel is transient,
+             so keeping it alive beats re-laying it out. -->
         <activity
             android:name=".SystemOptionsActivity"
+            android:configChanges="fontWeightAdjustment"
             android:theme="@style/Theme.Catapult.SideActivity"
             android:exported="true"
             android:launchMode="singleInstance">
