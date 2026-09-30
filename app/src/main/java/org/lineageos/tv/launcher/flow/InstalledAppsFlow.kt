@@ -46,10 +46,15 @@ class InstalledAppsFlow(private val context: Context) {
                 .mapNotNull { resolveInfo ->
                     LeanbackAppInfo(resolveInfo, context)
                 }
+        // An app with a TV entry point is shown by that alone. Apps whose TV
+        // and phone launchers are the same activity were already folded
+        // together below; an app that has a separate phone activity (Lemuroid,
+        // for one) otherwise got a second tile opening its touch interface.
+        val leanbackPackages = leanbackLauncherActivities.map { it.packageName }.toSet()
         val launcherActivities =
             packageManager.queryIntentActivities(launcherIntent, 0).mapNotNull { resolveInfo ->
                 AppInfo(resolveInfo, context)
-            }
+            }.filter { it.packageName !in leanbackPackages }
 
         (leanbackLauncherActivities + launcherActivities).distinctBy {
             it.launchIntent?.resolveActivityInfo(
