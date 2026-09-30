@@ -51,6 +51,14 @@
     <string name="accessibility_color_correction">Colour correction</string>
     <string name="accessibility_captions">Captions</string>
     <string name="accessibility_audio_description">Audio description</string>
+    <string name="streaming_status">Streaming\n%1$s</string>
+    <string name="streaming_title">Stream to this device</string>
+    <string name="streaming_off">Off</string>
+    <string name="streaming_airplay">AirPlay</string>
+    <plurals name="streaming_targets_on">
+        <item quantity="one">%1$d target on</item>
+        <item quantity="other">%1$d targets on</item>
+    </plurals>
     <string name="panel_shortcut_status">Panel shortcut\n%1$s</string>
     <string name="enabled">Enabled</string>
     <string name="disabled">Disabled</string>

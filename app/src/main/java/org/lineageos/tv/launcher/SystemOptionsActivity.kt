@@ -17,6 +17,7 @@ import android.bluetooth.BluetoothA2dp
 import android.media.AudioDeviceInfo
 import android.media.AudioDeviceCallback
 import android.media.AudioManager
+import android.content.ComponentName
 import android.content.Intent
 import android.icu.text.DateFormat
 import android.net.ConnectivityManager
@@ -33,6 +34,7 @@ import android.provider.Settings
 import android.service.notification.StatusBarNotification
 import android.text.SpannableString
 import android.util.Log
+import android.os.SystemProperties
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -78,6 +80,7 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
     private val noNotificationsTextView by lazy { findViewById<TextView>(R.id.noNotificationsTextView)!! }
     private val notificationsVerticalGridView by lazy { findViewById<VerticalGridView>(R.id.notificationsVerticalGridView)!! }
     private val panelShortcutTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.panelShortcutTwoLineButton)!! }
+    private val streamingTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.streamingTwoLineButton)!! }
     private val powerMaterialButton by lazy { findViewById<MaterialButton>(R.id.powerMaterialButton)!! }
     private val screensaverTwoLineButton by lazy { findViewById<TwoLineButton>(R.id.screensaverTwoLineButton)!! }
     private val settingsButton by lazy { findViewById<MaterialButton>(R.id.settingsMaterialButton)!! }
@@ -154,6 +157,7 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         setAccessibilityButton()
         setScreensaverButton()
         setAudioOutputButton()
+        setStreamingButton()
 
         getSystemService(BluetoothManager::class.java)?.adapter
             ?.getProfileProxy(this, a2dpListener, BluetoothProfile.A2DP)
@@ -276,6 +280,10 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
 
     override fun onResume() {
         super.onResume()
+        // The receiver can also be turned off from outside the panel -- by
+        // losing audio focus, for one -- so re-read rather than trusting what
+        // was painted when the panel opened.
+        setStreamingButton()
         if (NotificationUtils.notificationPermissionGranted(this)) {
             noNotificationAccessLinearLayout.visibility = View.GONE
         } else {
@@ -680,6 +688,115 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
             Settings.Secure.putInt(contentResolver, toggle.setting, value)
         } catch (e: SecurityException) {
             Log.e(LOG_TAG, "not allowed to write ${toggle.setting}", e)
+        }
+    }
+
+    /**
+     * A receiver another device can stream to.
+     *
+     * Toggling one starts or stops its *service* rather than writing
+     * [enabledProp] here. The property is only what init watches to run the
+     * daemon; the service is what holds audio focus and turns the daemon's
+     * metadata into a MediaSession, and a daemon running without it would play
+     * over whatever else is on and show nothing on screen. The service sets
+     * the property itself once it is up, which is why the property is still
+     * what this reads back.
+     */
+    private data class StreamingTarget(
+        val labelRes: Int,
+        val enabledProp: String,
+        val service: ComponentName,
+        val startAction: String,
+        val stopAction: String,
+    )
+
+    private val streamingTargets = listOf(
+        StreamingTarget(
+            R.string.streaming_airplay,
+            "persist.jetsontv.airplay.enabled",
+            ComponentName(
+                "org.lineageos.tv.airplay",
+                "org.lineageos.tv.airplay.AirPlayService"
+            ),
+            "org.lineageos.tv.airplay.START",
+            "org.lineageos.tv.airplay.STOP",
+        ),
+    )
+
+    /**
+     * Only the ones this build actually ships. The receivers are separate
+     * packages, so on a build without them the tile has nothing to offer and
+     * hides rather than listing switches that would do nothing.
+     */
+    private fun installedStreamingTargets() = streamingTargets.filter {
+        packageManager.resolveService(Intent(it.startAction).setComponent(it.service), 0) != null
+    }
+
+    private fun isStreamingTargetOn(target: StreamingTarget) =
+        SystemProperties.getBoolean(target.enabledProp, false)
+
+    private fun setStreamingButton() {
+        val targets = installedStreamingTargets()
+        if (targets.isEmpty()) {
+            streamingTwoLineButton.visibility = View.GONE
+            return
+        }
+        streamingTwoLineButton.visibility = View.VISIBLE
+
+        val on = targets.filter { isStreamingTargetOn(it) }
+        val status = when {
+            on.isEmpty() -> resources.getString(R.string.streaming_off)
+            // One is the common case, and its name is more use than "1 on".
+            on.size == 1 -> resources.getString(on.first().labelRes)
+            else -> resources.getQuantityString(
+                R.plurals.streaming_targets_on, on.size, on.size
+            )
+        }
+
+        streamingTwoLineButton.setSpan(
+            SpannableString(resources.getString(R.string.streaming_status, status))
+        )
+
+        streamingTwoLineButton.setOnClickListener { showStreamingTargets() }
+    }
+
+    private fun showStreamingTargets() {
+        val targets = installedStreamingTargets()
+        val labels = targets.map { resources.getString(it.labelRes) }.toTypedArray()
+        val checked = targets.map { isStreamingTargetOn(it) }.toBooleanArray()
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.streaming_title)
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                applyStreamingTarget(targets[which], isChecked)
+            }
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
+
+        dialog.window?.let { window ->
+            window.attributes = window.attributes.apply { gravity = Gravity.END }
+            window.setLayout(
+                resources.getDimensionPixelSize(R.dimen.audio_output_dialog_width),
+                WindowManager.LayoutParams.WRAP_CONTENT
+            )
+        }
+        dialog.setOnDismissListener { setStreamingButton() }
+        dialog.show()
+    }
+
+    /**
+     * startService, not startForegroundService: the panel is on screen, so the
+     * app is in the foreground and the background-start restriction does not
+     * apply. startForegroundService would also be wrong for the stop case --
+     * it promises a startForeground() that a service shutting itself down
+     * never makes, and the platform kills it for the broken promise.
+     */
+    private fun applyStreamingTarget(target: StreamingTarget, enable: Boolean) {
+        val action = if (enable) target.startAction else target.stopAction
+        try {
+            startService(Intent(action).setComponent(target.service))
+        } catch (e: RuntimeException) {
+            Log.e(LOG_TAG, "could not $action ${target.service.packageName}", e)
         }
     }
 
