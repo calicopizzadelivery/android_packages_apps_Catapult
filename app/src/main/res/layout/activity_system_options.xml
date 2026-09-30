@@ -53,7 +53,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:clipToPadding="false">
+                android:clipToPadding="false"
+                android:paddingStart="@dimen/system_options_edge"
+                android:paddingEnd="@dimen/system_options_edge">
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/sleepMaterialButton"
@@ -94,13 +96,16 @@
 
             </LinearLayout>
 
-            <!-- No side padding, and the same 6dp above as the rows below:
-                 the tiles all line up edge to edge and evenly spaced. -->
+            <!-- Every row has the same side padding, and the same 6dp above
+                 it: the tiles line up with each other, with the clock above
+                 and with the notifications below, evenly spaced. -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:clipToPadding="false">
+                android:clipToPadding="false"
+                android:paddingStart="@dimen/system_options_edge"
+                android:paddingEnd="@dimen/system_options_edge">
 
                 <org.lineageos.tv.launcher.view.TwoLineButton
                     android:id="@+id/networkTwoLineButton"
@@ -127,7 +132,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:orientation="horizontal">
+                android:clipToPadding="false"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/system_options_edge"
+                android:paddingEnd="@dimen/system_options_edge">
 
                 <org.lineageos.tv.launcher.view.TwoLineButton
                     android:id="@+id/screensaverTwoLineButton"
@@ -154,7 +162,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:orientation="horizontal">
+                android:clipToPadding="false"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/system_options_edge"
+                android:paddingEnd="@dimen/system_options_edge">
 
                 <org.lineageos.tv.launcher.view.TwoLineButton
                     android:id="@+id/audioOutputTwoLineButton"
@@ -181,7 +192,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
-                android:orientation="horizontal">
+                android:clipToPadding="false"
+                android:orientation="horizontal"
+                android:paddingStart="@dimen/system_options_edge"
+                android:paddingEnd="@dimen/system_options_edge">
 
                 <org.lineageos.tv.launcher.view.TwoLineButton
                     android:id="@+id/streamingTwoLineButton"

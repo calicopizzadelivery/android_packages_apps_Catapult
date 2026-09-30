@@ -4,6 +4,10 @@
      SPDX-License-Identifier: Apache-2.0
 -->
 <resources>
+    <!-- Side inset of every row in the system options panel: the same as the
+         clock above them and the notifications below, and room for a focused
+         tile's zoom, which would otherwise be clipped at the panel edge. -->
+    <dimen name="system_options_edge">16dp</dimen>
     <dimen name="app_card_height">100dp</dimen>
     <dimen name="app_card_width">177dp</dimen>
     <dimen name="watch_next_card_height">138dp</dimen>

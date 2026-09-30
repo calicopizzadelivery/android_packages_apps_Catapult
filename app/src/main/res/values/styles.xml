@@ -35,6 +35,12 @@
         <item name="iconGravity">start</item>
         <item name="android:maxLines">2</item>
         <item name="android:ellipsize">end</item>
+        <!-- Less than the button's default: the text is a title and a status
+             in two lines, and a title that wraps pushes the status out. With
+             the panel's edge inset, "Audio output" and "Panel shortcut" need
+             this room to stay on one line. -->
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
     </style>
 
     <style name="NotificationDismissButton" parent="Widget.AppCompat.Button.Borderless">
