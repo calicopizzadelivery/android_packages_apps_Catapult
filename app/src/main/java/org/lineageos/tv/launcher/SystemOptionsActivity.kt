@@ -484,9 +484,14 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
             }
             .setNegativeButton(android.R.string.cancel, null)
             .create()
+        showOverPanel(dialog)
+    }
 
-        // The panel is a right-edge pop-over, so a dialog centred on the screen
-        // reads as a different surface entirely. Keep it over the panel.
+    /**
+     * The panel is a right-edge pop-over, so a dialog centred on the screen
+     * reads as a different surface entirely. Keep every dialog over the panel.
+     */
+    private fun showOverPanel(dialog: AlertDialog) {
         dialog.window?.let { window ->
             window.attributes = window.attributes.apply { gravity = Gravity.END }
             window.setLayout(
@@ -665,16 +670,8 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
             }
             .setPositiveButton(android.R.string.ok, null)
             .create()
-
-        dialog.window?.let { window ->
-            window.attributes = window.attributes.apply { gravity = Gravity.END }
-            window.setLayout(
-                resources.getDimensionPixelSize(R.dimen.audio_output_dialog_width),
-                WindowManager.LayoutParams.WRAP_CONTENT
-            )
-        }
         dialog.setOnDismissListener { setAccessibilityButton() }
-        dialog.show()
+        showOverPanel(dialog)
     }
 
     /**
@@ -708,6 +705,8 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         val service: ComponentName,
         val startAction: String,
         val stopAction: String,
+        /** The receiver's settings provider, if it pairs devices: see [Pairing]. */
+        val settingsAuthority: String? = null,
     )
 
     private val streamingTargets = listOf(
@@ -720,6 +719,7 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
             ),
             "org.lineageos.tv.airplay.START",
             "org.lineageos.tv.airplay.STOP",
+            "org.lineageos.tv.airplay.settings",
         ),
     )
 
@@ -760,28 +760,147 @@ class SystemOptionsActivity : ModalActivity(R.layout.activity_system_options),
         streamingTwoLineButton.setOnClickListener { showStreamingTargets() }
     }
 
+    /**
+     * A receiver's pairing state, from its own settings provider
+     * (AirPlaySettingsProvider, for AirPlay). The receiver keeps the state,
+     * so the tile shows only what the receiver will actually do.
+     */
+    private class Pairing(
+        val target: StreamingTarget,
+        val requireCode: Boolean,
+        val keys: List<String>,
+        val names: List<String>,
+    )
+
+    /**
+     * Calls [method] on [target]'s settings provider and returns the state it
+     * reports back. Null if the target has no provider, or the call failed:
+     * an older receiver without one, or one that refused this package.
+     */
+    private fun pairing(
+        target: StreamingTarget,
+        method: String = "get",
+        arg: String? = null,
+        extras: Bundle? = null,
+    ): Pairing? {
+        val authority = target.settingsAuthority ?: return null
+        val state = try {
+            contentResolver.call(authority, method, arg, extras)
+        } catch (e: RuntimeException) {
+            Log.e(LOG_TAG, "$authority: $method failed", e)
+            null
+        } ?: return null
+        return Pairing(
+            target,
+            state.getBoolean("require_pin", true),
+            state.getStringArray("paired_keys")?.toList().orEmpty(),
+            state.getStringArray("paired_names")?.toList().orEmpty(),
+        )
+    }
+
+    private fun setRequireCode(target: StreamingTarget, on: Boolean) =
+        pairing(target, "set_require_pin", extras = Bundle().apply { putBoolean("value", on) })
+
     private fun showStreamingTargets() {
         val targets = installedStreamingTargets()
-        val labels = targets.map { resources.getString(it.labelRes) }.toTypedArray()
-        val checked = targets.map { isStreamingTargetOn(it) }.toBooleanArray()
+        // AirPlay is the only receiver that pairs today. Its code switch goes
+        // under the receivers' own switches, and its devices behind a button.
+        val pairing = targets.firstNotNullOfOrNull { pairing(it) }
 
-        val dialog = AlertDialog.Builder(this)
+        val labels = targets.map { resources.getString(it.labelRes) } +
+            listOfNotNull(pairing?.let { resources.getString(R.string.streaming_require_code) })
+        val checked = (targets.map { isStreamingTargetOn(it) } +
+            listOfNotNull(pairing?.requireCode)).toBooleanArray()
+
+        val builder = AlertDialog.Builder(this)
             .setTitle(R.string.streaming_title)
-            .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
-                applyStreamingTarget(targets[which], isChecked)
+            .setMultiChoiceItems(labels.toTypedArray(), checked) { dialog, which, isChecked ->
+                when {
+                    which < targets.size -> applyStreamingTarget(targets[which], isChecked)
+                    isChecked -> setRequireCode(pairing!!.target, true)
+                    else -> confirmCodeOff(dialog as AlertDialog, which, checked, pairing!!.target)
+                }
             }
             .setPositiveButton(android.R.string.ok, null)
-            .create()
-
-        dialog.window?.let { window ->
-            window.attributes = window.attributes.apply { gravity = Gravity.END }
-            window.setLayout(
-                resources.getDimensionPixelSize(R.dimen.audio_output_dialog_width),
-                WindowManager.LayoutParams.WRAP_CONTENT
-            )
+        pairing?.let { p ->
+            builder.setNeutralButton(
+                resources.getString(R.string.streaming_paired_devices, p.keys.size)
+            ) { _, _ -> showPairedDevices(p.target) }
         }
+        val dialog = builder.create()
         dialog.setOnDismissListener { setStreamingButton() }
-        dialog.show()
+        showOverPanel(dialog)
+    }
+
+    /**
+     * Without the code, anyone on the network can stream, so ask first.
+     * Declining, or backing out, puts the tick back.
+     */
+    private fun confirmCodeOff(
+        parent: AlertDialog,
+        which: Int,
+        checked: BooleanArray,
+        target: StreamingTarget,
+    ) {
+        var confirmed = false
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.streaming_code_off_title)
+            .setMessage(R.string.streaming_code_off_message)
+            .setPositiveButton(R.string.streaming_code_off_confirm) { _, _ ->
+                confirmed = true
+                setRequireCode(target, false)
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .create()
+        dialog.setOnDismissListener {
+            if (!confirmed) {
+                checked[which] = true
+                parent.listView.setItemChecked(which, true)
+            }
+        }
+        showOverPanel(dialog)
+    }
+
+    private fun showPairedDevices(target: StreamingTarget) {
+        val pairing = pairing(target) ?: return
+        val names = pairing.names.map {
+            it.ifEmpty { resources.getString(R.string.streaming_unnamed_device) }
+        }
+
+        val builder = AlertDialog.Builder(this)
+            .setTitle(R.string.streaming_paired_title)
+            .setPositiveButton(android.R.string.ok, null)
+        if (names.isEmpty()) {
+            builder.setMessage(R.string.streaming_paired_none)
+        } else {
+            builder.setItems(names.toTypedArray()) { _, which ->
+                confirmForget(target, pairing.keys[which], names[which])
+            }
+            builder.setNeutralButton(R.string.streaming_forget_all) { _, _ ->
+                confirmForget(target, null, null)
+            }
+        }
+        showOverPanel(builder.create())
+    }
+
+    /** A null [key] forgets every device. Back to the list afterwards. */
+    private fun confirmForget(target: StreamingTarget, key: String?, name: String?) {
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(
+                if (key == null) resources.getString(R.string.streaming_forget_all_title)
+                else resources.getString(R.string.streaming_forget_title, name)
+            )
+            .setMessage(
+                if (key == null) R.string.streaming_forget_all_message
+                else R.string.streaming_forget_message
+            )
+            .setPositiveButton(R.string.streaming_forget) { _, _ ->
+                pairing(target, "forget", key)
+                showPairedDevices(target)
+            }
+            .setNegativeButton(android.R.string.cancel) { _, _ -> showPairedDevices(target) }
+            .create()
+        showOverPanel(dialog)
     }
 
     /**
