@@ -41,6 +41,15 @@
 
     <style name="Theme.Catapult" parent="Theme.Material3.DayNight.NoActionBar.Leanback" />
 
+    <!-- The home screen shows the system wallpaper through a scrim, rather
+         than painting a flat colour. Only the home screen: the side panels
+         are floating windows over it and must not show the wallpaper. -->
+    <style name="Theme.Catapult.Home">
+        <item name="android:windowShowWallpaper">true</item>
+        <item name="android:windowBackground">@drawable/home_scrim</item>
+        <item name="android:colorBackgroundCacheHint">@null</item>
+    </style>
+
     <style name="Theme.Catapult.SideActivity">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowContentOverlay">@null</item>
